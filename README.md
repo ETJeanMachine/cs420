@@ -1,9 +1,9 @@
 # CSCI 420 Project Github
 ### Collaborators:
+- Peter Carbone
 - Eric Hamilton
-- Peter Cabone
+- Nicholas Lewandowski
 - Drake Zirkle
-- Nick Lewandowski
 
 ### Links to data sources: 
 - [Smogon](https://www.smogon.com/stats/)
