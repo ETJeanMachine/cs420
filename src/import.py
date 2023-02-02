@@ -37,6 +37,16 @@ async def read_data(data_url: str) -> int:
         return len(data_df.index)
 
 
+def display_stats(r_cnt, total_rows, yr, t1, t2):
+    if yr != 0:
+        if t2 - t1 < 60:
+            c = f"{t2 - t1:06.3f}s"
+        else:
+            min = int((t2 - t1) // 60)
+            c = f"{min}:{(t2 - t1) - (min * 60):05.2f}m"
+        print(f"Parsed {yr} in {c}: {r_cnt} rows counted ({total_rows} total).")
+
+
 async def main():
     url = "https://www.smogon.com/stats/"
     month_links = parse_urls(url)
@@ -52,29 +62,25 @@ async def main():
         chaos_url = f"{url}{month}chaos/"
         curr_yr = int(month.split("-")[0])
         if curr_yr > yr:
-            total_rows += r_cnt
             t2 = time.perf_counter()
-            if yr != 0:
-                if t2 - t1 < 60:
-                    c = f"{t2 - t1:.3f}s"
-                else:
-                    min = int((t2 - t1) // 60)
-                    c = f"{min}:{(t2 - t1) - (min * 60):.3f}m"
-                print(f"Parsed {yr} in {c}: {r_cnt} rows counted ({total_rows} total).")
-            yr = curr_yr
-            t1 = t2
+            total_rows += r_cnt
+            display_stats(r_cnt, total_rows, yr, t1, t2)
+            t1, r_cnt, yr = t2, 0, curr_yr
         task_list = []
         async with asyncio.TaskGroup() as tg:
             for data_file in parse_urls(chaos_url):
                 data_url = f"{chaos_url}{data_file}"
                 if re.match(
-                    r"^gen7(doubles)?(ou|ubers|anythinggoes|vgc\d{4})-\d+\.json$",
+                    r"^(gen[5-9])?(doubles)?(ou|ubers|anythinggoes|vgc\d{4})-\d+\.json$",
                     data_file,
                 ):
                     task_list.append(tg.create_task(read_data(data_url)))
         for t in task_list:
             r_cnt += t.result()
-    print(total_rows)
+    if r_cnt != 0:
+        t2 = time.perf_counter()
+        total_rows += r_cnt
+        display_stats(r_cnt, total_rows, yr, t1, t2)
 
 
 asyncio.run(main())
