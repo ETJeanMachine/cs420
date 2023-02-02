@@ -36,10 +36,16 @@ def main():
                 # - store this into a database, which we also construct in this python file
                 # - process the list in some way after the fact.
                 json_res = requests.get(data_url).json()
-                info, data = json_res['info'], json_res['data']
-                info_df, data_df = pd.json_normalize(info), pd.json_normalize(data)
-                print(data_df.head(10))
+                info, data = json_res["info"], json_res["data"]
+                trans_data = []
+                for name in data.keys():
+                    trans_data.append({"Name": name})
+                    for k in data[name].keys():
+                        trans_data[len(trans_data) - 1][k] = data[name][k]
+                data_df = pd.json_normalize(trans_data, max_level=0)
+                gen_7_data.append(data_df)
     print(gen_7_data)
+
 
 if __name__ == "__main__":
     main()
