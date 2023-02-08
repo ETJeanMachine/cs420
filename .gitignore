@@ -1,1 +1,5 @@
 /.vscode
+*.csv
+/.idea
+.DS_Store
+
