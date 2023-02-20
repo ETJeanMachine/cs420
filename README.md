@@ -17,4 +17,12 @@
 - Ensure you are on python version 3.11 or higher.
   - Check via `python --version`.
 - Run `python -m pip install requirements.txt`.
-- Insert database username and password as two lines in a new file called `db_conn.key`, in the root directory (not in `/src`).
+- Insert the database, username, and password as three lines in a new file called `db_conn.key`, in the root directory (not in `/src`).
+
+  - Example `db_conn.key`:
+
+  ```key
+  sample_db
+  user123
+  pass123
+  ```
