@@ -11,17 +11,17 @@ from sshtunnel import SSHTunnelForwarder
 
 """
 ORDER OF IMPORTS:
-1.  pokemon_info   - pokeapi
-2.  move_info      - pokeapi
-3.  move_pool      - pokeapi
-4.  egg_group*     - pokeapi
-5.  metagame_info  - smogon
-6.  pokemon_stats  - smogon
-7.  nature_stats   - smogon
-8.  ability_stats  - smogon
-9.  teammate_stats - smogon
-10. item_stats     - smogon
-11. move_stats     - smogon
+1.  pokemon_info   - pokeapi [X]
+2.  move_info      - pokeapi [ ]
+3.  move_pool      - pokeapi [ ]
+4.  egg_group*     - pokeapi [ ]
+5.  metagame_info  - smogon  [ ]
+6.  pokemon_stats  - smogon  [ ]
+7.  nature_stats   - smogon  [ ]
+8.  ability_stats  - smogon  [ ]
+9.  teammate_stats - smogon  [ ]
+10. item_stats     - smogon  [ ]
+11. move_stats     - smogon  [ ]
 *may end up being last form import due to multi-to-multi reasons.
 """
 
