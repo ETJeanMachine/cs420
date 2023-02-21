@@ -14,7 +14,7 @@ ORDER OF IMPORTS:
 1.  pokemon_info   - pokeapi [X]
 2.  move_info      - pokeapi [X]
 3.  move_pool      - pokeapi [X]
-4.  egg_group*     - pokeapi [ ]
+4.  egg_group      - pokeapi [X]
 5.  metagame_info  - smogon  [ ]
 6.  pokemon_stats  - smogon  [ ]
 7.  nature_stats   - smogon  [ ]
@@ -109,7 +109,7 @@ async def get_move_info(url: str, df: DataFrame):
         df.loc[len(df.index)] = row
 
 
-async def pre_process_movepool():
+async def preprocess_move_pool():
     with SSHTunnelForwarder(
         ("starbug.cs.rit.edu", 22),
         ssh_username=username,
@@ -128,11 +128,10 @@ async def pre_process_movepool():
         pkmn_res = await conn.fetch(
             f"SELECT name, pokemon_info_id FROM {db_name}.pokemon_info"
         )
-        move_res = await conn.fetch(
-            f"SELECT name, move_id FROM {db_name}.move_info"
-        )
+        move_res = await conn.fetch(f"SELECT name, move_id FROM {db_name}.move_info")
         pokemon = np.array(pkmn_res)
         moves = np.array(move_res)
+
     async def get_movepool(url: str, df: DataFrame):
         async with aiohttp.ClientSession() as session:
             res = await session.get(url)
@@ -142,7 +141,56 @@ async def pre_process_movepool():
                 move_id = moves[np.where(moves[:, 0] == m["move"]["name"])][0][1]
                 row = [pkmn_id, move_id]
                 df.loc[len(df.index)] = row
+
     return get_movepool
+
+
+async def get_egg_groups(url, df: DataFrame):
+    async with aiohttp.ClientSession() as session:
+        res = await session.get(url)
+        json = await res.json()
+        row = [json["name"], json["id"]]
+        df.loc[len(df.index)] = row
+
+
+async def preprocess_egg_groups():
+    with SSHTunnelForwarder(
+        ("starbug.cs.rit.edu", 22),
+        ssh_username=username,
+        ssh_password=password,
+        remote_bind_address=("localhost", 5432),
+    ) as server:
+        server.start()
+        params = {
+            "database": db_name,
+            "user": username,
+            "password": password,
+            "host": "localhost",
+            "port": server.local_bind_port,
+        }
+        conn = await asyncpg.connect(**params)
+        pkmn_res = await conn.fetch(
+            f"SELECT name, pokemon_info_id FROM {db_name}.pokemon_info"
+        )
+        egg_res = await conn.fetch(
+            f"SELECT name, egg_group_id FROM {db_name}.egg_group"
+        )
+        pokemon = np.array(pkmn_res)
+        egg_groups = np.array(egg_res)
+
+    async def get_egg_rel(url, df: DataFrame):
+        async with aiohttp.ClientSession() as session:
+            res = await session.get(url)
+            json = await res.json()
+            species_res = await session.get(json["species"]["url"])
+            species_json = await species_res.json()
+            pkmn_id = pokemon[np.where(pokemon[:, 0] == json["name"])][0][1]
+            for e in species_json["egg_groups"]:
+                egg_id = egg_groups[np.where(egg_groups[:, 0] == e["name"])][0][1]
+                row = [pkmn_id, egg_id]
+                df.loc[len(df.index)] = row
+
+    return get_egg_rel
 
 
 async def import_pokeapi(url, columns, table, get_fn):
@@ -155,47 +203,63 @@ async def import_pokeapi(url, columns, table, get_fn):
             res = await session.get(next)
             json = await res.json()
             print(f"appending {table}: {offset} - {len(json['results']) + offset - 1}")
+            # doing API calls in batches of 20.
             async with asyncio.TaskGroup() as tg:
                 for val in json["results"]:
                     tg.create_task(get_fn(val["url"], df))
+            # dropping identical rows
             df = df.drop_duplicates()
+            # sending the stuff to the db
             await append_df(table, df)
             next = json["next"]
             offset += 20
 
 
 async def main():
-    # await import_pokeapi(
-    #     "https://pokeapi.co/api/v2/pokemon",
-    #     [
-    #         "dex_no",
-    #         "name",
-    #         "primary_type",
-    #         "secondary_type",
-    #         "base_hp",
-    #         "base_attack",
-    #         "base_defense",
-    #         "base_sp_attack",
-    #         "base_sp_defense",
-    #         "base_speed",
-    #         "generation",
-    #     ],
-    #     "pokemon_info",
-    #     get_pokemon_info,
-    # )
-    # await import_pokeapi(
-    #     "https://pokeapi.co/api/v2/move",
-    #     ["name", "type", "damage_class", "power", "accuracy", "pp", "priority"],
-    #     "move_info",
-    #     get_move_info,
-    # )
-    fn = await pre_process_movepool()
-    await import_pokeapi(
+    pkmn_inf = (
+        "https://pokeapi.co/api/v2/pokemon",
+        [
+            "dex_no",
+            "name",
+            "primary_type",
+            "secondary_type",
+            "base_hp",
+            "base_attack",
+            "base_defense",
+            "base_sp_attack",
+            "base_sp_defense",
+            "base_speed",
+            "generation",
+        ],
+        "pokemon_info",
+        get_pokemon_info,
+    )
+    move_inf = (
+        "https://pokeapi.co/api/v2/move",
+        ["name", "type", "damage_class", "power", "accuracy", "pp", "priority"],
+        "move_info",
+        get_move_info,
+    )
+    mp_inf = (
         "https://pokeapi.co/api/v2/pokemon",
         ["pokemon_info_id", "move_id"],
         "move_pool",
-        fn,
+        await preprocess_move_pool(),
     )
+    egg_inf = (
+        "https://pokeapi.co/api/v2/egg-group",
+        ["name", "egg_group_id"],
+        "egg_group",
+        get_egg_groups,
+    )
+    egg_g_inf = (
+        "https://pokeapi.co/api/v2/pokemon",
+        ["pokemon_info_id", "egg_group_id"],
+        "pokemoninfo_egggroup",
+        await preprocess_egg_groups(),
+    )
+    v1, v2, v3, v4 = egg_g_inf[0], egg_g_inf[1], egg_g_inf[2], egg_g_inf[3]
+    await import_pokeapi(v1, v2, v3, v4)
 
 
 asyncio.run(main())
