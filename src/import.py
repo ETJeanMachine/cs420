@@ -12,8 +12,8 @@ from sshtunnel import SSHTunnelForwarder
 """
 ORDER OF IMPORTS:
 1.  pokemon_info   - pokeapi [X]
-2.  move_info      - pokeapi [ ]
-3.  move_pool      - pokeapi [ ]
+2.  move_info      - pokeapi [X]
+3.  move_pool      - pokeapi [X]
 4.  egg_group*     - pokeapi [ ]
 5.  metagame_info  - smogon  [ ]
 6.  pokemon_stats  - smogon  [ ]
@@ -32,7 +32,7 @@ username = db_conn_file.readline().strip()
 password = db_conn_file.readline().strip()
 
 
-async def store_df(table_name: str, df: DataFrame):
+async def append_df(table: str, df: DataFrame):
     with SSHTunnelForwarder(
         ("starbug.cs.rit.edu", 22),
         ssh_username=username,
@@ -49,19 +49,22 @@ async def store_df(table_name: str, df: DataFrame):
         }
         conn = await asyncpg.connect(**params)
         records = df.itertuples(index=False, name=None)
-        await conn.copy_records_to_table(
-            table_name,
-            records=records,
-            columns=list(df),
-            schema_name=db_name,
-            timeout=10,
-        )
+        try:
+            await conn.copy_records_to_table(
+                table,
+                records=records,
+                columns=list(df),
+                schema_name=db_name,
+                timeout=10,
+            )
+        except Exception:
+            pass
         conn.close()
 
 
-async def pokemon_info_import():
-    async def get_and_append(url: str, df: DataFrame):
-        try:
+async def get_pokemon_info(url: str, df: DataFrame):
+    try:
+        async with aiohttp.ClientSession() as session:
             res = await session.get(url)
             json = await res.json()
             # dex number requires a seperate API call
@@ -87,43 +90,114 @@ async def pokemon_info_import():
                 species_json["generation"]["name"],
             ]
             df.loc[len(df.index)] = row
-        except Exception:
-            print(url)
+    except Exception:
+        print(url)
 
+
+async def get_move_info(url: str, df: DataFrame):
+    async with aiohttp.ClientSession() as session:
+        res = await session.get(url)
+        json = await res.json()
+        if json["type"]["name"] == "shadow":
+            return
+        row = [
+            json["name"],
+            json["type"]["name"],
+            json["damage_class"]["name"],
+            json["power"],
+            json["accuracy"],
+            json["pp"],
+            json["priority"],
+        ]
+        df.loc[len(df.index)] = row
+
+
+async def pre_process_movepool():
+    with SSHTunnelForwarder(
+        ("starbug.cs.rit.edu", 22),
+        ssh_username=username,
+        ssh_password=password,
+        remote_bind_address=("localhost", 5432),
+    ) as server:
+        server.start()
+        params = {
+            "database": db_name,
+            "user": username,
+            "password": password,
+            "host": "localhost",
+            "port": server.local_bind_port,
+        }
+        conn = await asyncpg.connect(**params)
+        pkmn_res = await conn.fetch(
+            f"SELECT name, pokemon_info_id FROM {db_name}.pokemon_info"
+        )
+        move_res = await conn.fetch(
+            f"SELECT name, move_id FROM {db_name}.move_info"
+        )
+        pokemon = np.array(pkmn_res)
+        moves = np.array(move_res)
+    async def get_movepool(url: str, df: DataFrame):
+        async with aiohttp.ClientSession() as session:
+            res = await session.get(url)
+            json = await res.json()
+            pkmn_id = pokemon[np.where(pokemon[:, 0] == json["name"])][0][1]
+            for m in json["moves"]:
+                move_id = moves[np.where(moves[:, 0] == m["move"]["name"])][0][1]
+                row = [pkmn_id, move_id]
+                df.loc[len(df.index)] = row
+    return get_movepool
+
+
+async def import_pokeapi(url, columns, table, get_fn):
     async with aiohttp.ClientSession() as session:
         # Getting Pokémon in batches of 20 at a time.
-        next = "https://pokeapi.co/api/v2/pokemon?limit=20&offset=0"
+        next = url
         offset = 0
         while next != None:
-            df = DataFrame(
-                columns=[
-                    "dex_no",
-                    "name",
-                    "primary_type",
-                    "secondary_type",
-                    "base_hp",
-                    "base_attack",
-                    "base_defense",
-                    "base_sp_attack",
-                    "base_sp_defense",
-                    "base_speed",
-                    "generation",
-                ]
-            )
+            df = DataFrame(columns=columns)
             res = await session.get(next)
             json = await res.json()
-            print(f"Adding Pokemon {offset} - {len(json['results']) + offset - 1}")
+            print(f"appending {table}: {offset} - {len(json['results']) + offset - 1}")
             async with asyncio.TaskGroup() as tg:
                 for val in json["results"]:
-                    tg.create_task(get_and_append(val["url"], df))
-            await store_df("pokemon_info", df)
+                    tg.create_task(get_fn(val["url"], df))
+            await append_df(table, df)
             next = json["next"]
             offset += 20
 
 
 async def main():
-    pass
-    # await pokemon_info_import()
+    # await import_pokeapi(
+    #     "https://pokeapi.co/api/v2/pokemon",
+    #     [
+    #         "dex_no",
+    #         "name",
+    #         "primary_type",
+    #         "secondary_type",
+    #         "base_hp",
+    #         "base_attack",
+    #         "base_defense",
+    #         "base_sp_attack",
+    #         "base_sp_defense",
+    #         "base_speed",
+    #         "generation",
+    #     ],
+    #     "pokemon_info",
+    #     get_pokemon_info,
+    # )
+    # await import_pokeapi(
+    #     "https://pokeapi.co/api/v2/move",
+    #     ["name", "type", "damage_class", "power", "accuracy", "pp", "priority"],
+    #     "move_info",
+    #     get_move_info,
+    # )
+    fn = await pre_process_movepool()
+    await import_pokeapi(
+        "https://pokeapi.co/api/v2/pokemon",
+        ["pokemon_info_id", "move_id"],
+        "move_pool",
+        fn,
+    )
 
 
 asyncio.run(main())
