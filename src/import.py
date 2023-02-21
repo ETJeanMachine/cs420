@@ -49,16 +49,13 @@ async def append_df(table: str, df: DataFrame):
         }
         conn = await asyncpg.connect(**params)
         records = df.itertuples(index=False, name=None)
-        try:
-            await conn.copy_records_to_table(
-                table,
-                records=records,
-                columns=list(df),
-                schema_name=db_name,
-                timeout=10,
-            )
-        except Exception:
-            pass
+        await conn.copy_records_to_table(
+            table,
+            records=records,
+            columns=list(df),
+            schema_name=db_name,
+            timeout=10,
+        )
         conn.close()
 
 
@@ -161,6 +158,7 @@ async def import_pokeapi(url, columns, table, get_fn):
             async with asyncio.TaskGroup() as tg:
                 for val in json["results"]:
                     tg.create_task(get_fn(val["url"], df))
+            df = df.drop_duplicates()
             await append_df(table, df)
             next = json["next"]
             offset += 20
