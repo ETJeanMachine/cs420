@@ -1,11 +1,8 @@
 import re
 import aiohttp, asyncio, requests, asyncpg
-import time, datetime
 import pandas as pd
 import numpy as np
-from bs4 import BeautifulSoup
 from pandas import DataFrame
-from typing import List
 from sshtunnel import SSHTunnelForwarder
 
 """
@@ -30,27 +27,23 @@ db_name = db_conn_file.readline().strip()
 username = db_conn_file.readline().strip()
 password = db_conn_file.readline().strip()
 
-# global increments we do in code ourselves for reference handling
-meta_id, stats_id = 0, 0
-outliers = set()
+"""
+This entire file is done, and has served it's purpose. 
+You can largely ignore it, and it's lack of comments. :p
+"""
 
-# Helper for smogon stuff.
-def parse_urls(url: str, reg=None) -> List[str]:
-    res = requests.get(url)
-    soup = BeautifulSoup(res.text, "html.parser")
-    urls = []
-    for l in soup.find_all("a"):
-        link = l.get("href")
-        if link != "../":
-            if reg == None:
-                urls.append(link)
-            elif re.match(reg, link):
-                urls.append(link)
-    return urls
-
-
-# Necessary func for sending a prepared dataframe to the db.
 async def append_df(table: str, df: DataFrame, index=False):
+    """Function appends the dataframe to the provided table.
+
+    Args:
+        table (str): The table in the database that's being appended to.
+
+        df (DataFrame): The dataframe that is being appended to the table. 
+        The names of the columns in the dataframe must match the names of the columns
+        in the database.
+
+        index (bool, optional): Whether or not to use the index of the dataframe when appending. Defaults to False.
+    """
     with SSHTunnelForwarder(
         ("starbug.cs.rit.edu", 22),
         ssh_username=username,
@@ -67,6 +60,7 @@ async def append_df(table: str, df: DataFrame, index=False):
         }
         conn = await asyncpg.connect(**params)
         records = df.itertuples(index=index, name=None)
+        # appending the table.
         await conn.copy_records_to_table(
             table,
             records=records,
@@ -233,119 +227,8 @@ async def import_pokeapi(url, columns, table, get_fn):
             offset += 20
 
 
-async def get_links(url, reg=None):
-    async with aiohttp.ClientSession() as session:
-        res = await session.get(url)
-        text = await res.text()
-        soup = BeautifulSoup(text, "html.parser")
-        urls = []
-        for l in soup.find_all("a"):
-            href = l.get("href")
-            if href != "../":
-                if reg == None:
-                    urls.append(f"{url}{href}")
-                elif re.match(reg, href):
-                    urls.append(f"{url}{href}")
-    return urls
-
-
-async def add_data_files(url, month, data_files):
-    reg = (
-        r"^(gen[5-9])?(doubles)?(ou|ubers|anythinggoes|vgc\d{4}(series\d)?)-\d+\.json$"
-    )
-    files = await get_links(url, reg)
-    for f in files:
-        data_files.append([f, month])
-
-
-async def get_smogon_data(
-    url, month: datetime.date, pokemon: DataFrame, moves: DataFrame
-):
-    global meta_id
-    async with aiohttp.ClientSession() as session:
-        res = await session.get(url)
-        json = await res.json()
-        meta_inf = json["info"]
-        meta_df = DataFrame(
-            index={"metagame_id": meta_id},
-            data={
-                "metagame_name": meta_inf["metagame"],
-                "cutoff": meta_inf["cutoff"],
-                "datetime": month,
-                "total_battles": meta_inf["number of battles"],
-            },
-        )
-        meta_id += 1
-        # await append_df("metagame_info", meta_df, True)
-        data = DataFrame()
-        data = data.from_dict(json["data"], orient="index")
-        data.index = (
-            data.index.str.lower().str.replace(" ", "-").str.replace(r"\.|\'", "")
-        )
-        merged = data.merge(
-            pokemon, how="left", left_index=True, right_index=True, indicator=True
-        )
-        not_in = merged.loc[merged["_merge"] == "left_only"]
-        outliers.update(not_in.index.to_list())
-
-
-async def import_smogon():
-    smogon_url = "https://www.smogon.com/stats/"
-    folders = await get_links(smogon_url)
-    data_files = []
-    with SSHTunnelForwarder(
-        ("starbug.cs.rit.edu", 22),
-        ssh_username=username,
-        ssh_password=password,
-        remote_bind_address=("localhost", 5432),
-    ) as server:
-        server.start()
-        params = {
-            "database": db_name,
-            "user": username,
-            "password": password,
-            "host": "localhost",
-            "port": server.local_bind_port,
-        }
-        conn = await asyncpg.connect(**params)
-        pkmn_res = await conn.fetch(
-            f"SELECT name, pokemon_info_id FROM {db_name}.pokemon_info"
-        )
-        move_res = await conn.fetch(f"SELECT name, move_id FROM {db_name}.move_info")
-        pokemon = DataFrame(pkmn_res)
-        moves = DataFrame(move_res)
-        pokemon.index = pokemon[0]
-        moves.index = moves[0]
-        pokemon = pokemon.drop(columns=[0])
-        moves = moves.drop(columns=[0])
-    async with asyncio.TaskGroup() as tg:
-        for folder in folders:
-            data_url = f"{folder}chaos/"
-            split_url = folder.split("/")
-            split_val = split_url[len(split_url) - 2].split("-")
-            month = datetime.date(int(split_val[0]), int(split_val[1]), 1)
-            tg.create_task(add_data_files(data_url, month, data_files))
-    offset, inc = 0, 100
-    times = []
-    while offset < len(data_files):
-        end = min(offset + inc, len(data_files))
-        chunk = data_files[offset:end]
-        t = time.perf_counter()
-        async with asyncio.TaskGroup() as tg:
-            for info in chunk:
-                tg.create_task(get_smogon_data(info[0], info[1], pokemon, moves))
-        times.append(time.perf_counter() - t)
-        est = (np.mean(times) * (len(data_files) / inc)) - sum(times)
-        fmt_est = time.strftime("%M:%S", time.gmtime(est))
-        print(
-            f"Managed {end}/{len(data_files)} json files in {times[len(times)-1]:06.3f}s (~{fmt_est}m remaining)"
-        )
-        offset += inc
-    total_time = time.strftime("%M:%S", time.gmtime(sum(times)))
-    print(f"Parsed all files in {total_time}m")
-
-
 async def main():
+
     pkmn_inf = (
         "https://pokeapi.co/api/v2/pokemon",
         [
@@ -390,9 +273,6 @@ async def main():
     )
     v1, v2, v3, v4 = egg_g_inf[0], egg_g_inf[1], egg_g_inf[2], egg_g_inf[3]
     # await import_pokeapi(v1, v2, v3, v4)
-    # fn = await preprocess_smogon()
-    await import_smogon()
-    print(outliers)
 
 
 asyncio.run(main())
