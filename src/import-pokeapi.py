@@ -11,13 +11,13 @@ ORDER OF IMPORTS:
 2.  move_info      - pokeapi [X]
 3.  move_pool      - pokeapi [X]
 4.  egg_group      - pokeapi [X]
-5.  metagame_info  - smogon  [ ]
-6.  pokemon_stats  - smogon  [ ]
-7.  nature_stats   - smogon  [ ]
-8.  ability_stats  - smogon  [ ]
-9.  teammate_stats - smogon  [ ]
-10. item_stats     - smogon  [ ]
-11. move_stats     - smogon  [ ]
+5.  metagame_info  - smogon  [X]
+6.  pokemon_stats  - smogon  [X]
+7.  move_stats     - smogon  [X]
+8.  nature_stats   - smogon  [ ]
+9.  ability_stats  - smogon  [ ]
+10. teammate_stats - smogon  [ ]
+11. item_stats     - smogon  [ ]
 *may end up being last form import due to multi-to-multi reasons.
 """
 
