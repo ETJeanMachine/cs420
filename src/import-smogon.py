@@ -52,7 +52,6 @@ async def append_df(table: str, df: DataFrame):
             records=records,
             columns=list(df),
             schema_name=db_name,
-            timeout=10,
         )
         conn.close()
 
