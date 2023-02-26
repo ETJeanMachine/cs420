@@ -22,6 +22,7 @@ async def main():
             "port": server.local_bind_port,
         }
         conn = await asyncpg.connect(**params)
+        await conn.execute("""set search_path = "p42002_03";""")
         # FETCH STUFF IN HERE FOR EDA (SQL QUERIES)
         conn.close()
     # DO EDA HERE
