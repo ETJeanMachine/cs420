@@ -2,5 +2,6 @@
 *.csv
 /.idea
 *.key
+*.png
 .DS_Store
 
