@@ -20,7 +20,7 @@ password = db_conn_file.readline().strip()
 # Respective constants for the length of the regional dex of each generation
 dex_sizes = {151, 100, 135, 107, 156, 72, 88, 96, 103}
 
-def determine_generation(generation:str) -> int:
+def determine_generation(generation: str) -> int:
   return roman.fromRoman(generation.upper())
 
 def determine_percentage(generation: str, dex_no: int) -> float:
@@ -57,9 +57,7 @@ async def main():
         # Column 0 is pokedex number, 1 is pokemon name, 2 is percent used, 3 is the percentage of that pokemon in their regional pokedex
         popularity_by_pokedex_no_res = await conn.fetch(popularity_by_pokedex_no_query)
         pokedex_popularity = DataFrame(popularity_by_pokedex_no_res)
-        pokedex_popularity.columns = ['dex_no', 'name', 'generation', 'percent_used', 'percentage_in_pokedex']
-        for i in  pokedex_popularity.index:
-          pokedex_popularity['percentage_in_pokedex'][i] = determine_percentage(pokedex_popularity['generation'][i], pokedex_popularity['dex_no'][i])
+        pokedex_popularity['percentage_in_pokedex'] = [determine_percentage(pokedex_popularity['generation'][i], pokedex_popularity['percentage'][i]) for i in pokedex_popularity.index]
 
         try:
             p1 = sns.scatterplot(data=pokedex_popularity[['percentage_in_pokedex', 'percent_used']],
