@@ -76,7 +76,7 @@ async def main():
                         pokedex_popularity.name[line], horizontalalignment='left', size='x-small', color='black',
                         weight='medium')
 
-            plt.savefig('moves_vs_popularity_labeled')
+            plt.savefig('hypothesis_4_labeled')
 
             # # Reset figure to do type
             # plt.figure()
