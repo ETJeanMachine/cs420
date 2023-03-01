@@ -66,7 +66,7 @@ async def correct_dex_no(url: str, pkmn_info: DataFrame):
         ):
             pkmn_info.drop(our_forms, inplace=True)
         else:
-            if json['name'] == 'urshifu':
+            if json["name"] == "urshifu":
                 pass
             if len(our_forms) > 1:
                 pkmn_info.loc[
@@ -74,7 +74,15 @@ async def correct_dex_no(url: str, pkmn_info: DataFrame):
                     & ~(pkmn_info["name"] == json["name"]),
                     ["is_primary"],
                 ] = False
-                if len(pkmn_info[(pkmn_info['old_dex_no'] == order) & (pkmn_info['is_primary'])]) != 1:
+                if (
+                    len(
+                        pkmn_info[
+                            (pkmn_info["old_dex_no"] == order)
+                            & (pkmn_info["is_primary"])
+                        ]
+                    )
+                    != 1
+                ):
                     for v in their_forms:
                         if v["is_default"]:
                             name = v["pokemon"]["name"]
@@ -91,7 +99,23 @@ async def correct_dex_no(url: str, pkmn_info: DataFrame):
             ]
 
 
-async def send_update(old_no, new_no):
+async def main():
+    pkmn_info = await get_pokemon_info()
+    pkmn_info["old_dex_no"] = pkmn_info["dex_no"]
+    next = "https://pokeapi.co/api/v2/pokemon-species?offset=0&limit=100"
+    # Getting corrected data and storing it into pkmn_info
+    while next != None:
+        async with aiohttp.ClientSession() as session:
+            res = await session.get(next)
+            json = await res.json()
+            async with asyncio.TaskGroup() as tg:
+                for val in json["results"]:
+                    tg.create_task(correct_dex_no(val["url"], pkmn_info))
+            next = json["next"]
+    start = 0
+    total_pkmn = len(pkmn_info.index)
+    cnt = 0
+    # Storing our updates to the database.
     with SSHTunnelForwarder(
         ("starbug.cs.rit.edu", 22),
         ssh_username=username,
@@ -108,31 +132,19 @@ async def send_update(old_no, new_no):
         }
         conn: Connection = await asyncpg.connect(**params)
         await conn.execute("""set search_path = "p42002_03";""")
-        update = f"""
-        UPDATE pokemon_info p
-        SET 
-        """
+        stmt = await conn.prepare(
+            """
+                update pokemon_info
+                set dex_no=$2, is_primary=$3, is_mythical=$4, is_legendary=$5
+                where pokemon_info_id=$1;
+                """
+        )
+        pkmn_info.drop(["old_dex_no", "name"], axis=1, inplace=True)
+        records = pkmn_info.itertuples(index=False)
+        await stmt.executemany(records)
         conn.close()
-
-
-async def main():
-    pkmn_info = await get_pokemon_info()
-    pkmn_info["old_dex_no"] = pkmn_info["dex_no"]
-    next = "https://pokeapi.co/api/v2/pokemon-species?offset=0&limit=100"
-    offset = 0
-    # Getting corrected data and storing it into pkmn_info
-    while next != None:
-        async with aiohttp.ClientSession() as session:
-            res = await session.get(next)
-            json = await res.json()
-            async with asyncio.TaskGroup() as tg:
-                for val in json["results"]:
-                    tg.create_task(correct_dex_no(val["url"], pkmn_info))
-            next = json["next"]
-            offset += 100
-    offset = 0
-    # Storing our updates to the database.
-    # TODO
+    print(pkmn_info)
+    print(cnt)
 
 
 asyncio.run(main())
