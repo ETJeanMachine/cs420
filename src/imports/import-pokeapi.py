@@ -1,9 +1,7 @@
-import re
-import aiohttp, asyncio, requests, asyncpg
-import pandas as pd
+import aiohttp, asyncio
 import numpy as np
 from pandas import DataFrame
-from sshtunnel import SSHTunnelForwarder
+from db_connect import db_connect
 
 """
 ORDER OF IMPORTS:
@@ -21,16 +19,11 @@ ORDER OF IMPORTS:
 *may end up being last form import due to multi-to-multi reasons.
 """
 
-# Getting valid information from the connection file.
-db_conn_file = open("./db_conn.key")
-db_name = db_conn_file.readline().strip()
-username = db_conn_file.readline().strip()
-password = db_conn_file.readline().strip()
-
 """
 This entire file is done, and has served it's purpose. 
 You can largely ignore it, and it's lack of comments. :p
 """
+
 
 async def append_df(table: str, df: DataFrame, index=False):
     """Function appends the dataframe to the provided table.
@@ -38,37 +31,22 @@ async def append_df(table: str, df: DataFrame, index=False):
     Args:
         table (str): The table in the database that's being appended to.
 
-        df (DataFrame): The dataframe that is being appended to the table. 
+        df (DataFrame): The dataframe that is being appended to the table.
         The names of the columns in the dataframe must match the names of the columns
         in the database.
 
         index (bool, optional): Whether or not to use the index of the dataframe when appending. Defaults to False.
     """
-    with SSHTunnelForwarder(
-        ("starbug.cs.rit.edu", 22),
-        ssh_username=username,
-        ssh_password=password,
-        remote_bind_address=("localhost", 5432),
-    ) as server:
-        server.start()
-        params = {
-            "database": db_name,
-            "user": username,
-            "password": password,
-            "host": "localhost",
-            "port": server.local_bind_port,
-        }
-        conn = await asyncpg.connect(**params)
-        records = df.itertuples(index=index, name=None)
-        # appending the table.
-        await conn.copy_records_to_table(
-            table,
-            records=records,
-            columns=list(df),
-            schema_name=db_name,
-            timeout=10,
-        )
-        conn.close()
+    conn = await db_connect()
+    records = df.itertuples(index=index, name=None)
+    # appending the table.
+    await conn.copy_records_to_table(
+        table,
+        records=records,
+        columns=list(df),
+        timeout=10,
+    )
+    conn.close()
 
 
 async def get_pokemon_info(url: str, df: DataFrame):
@@ -122,27 +100,11 @@ async def get_move_info(url: str, df: DataFrame):
 
 
 async def preprocess_move_pool():
-    with SSHTunnelForwarder(
-        ("starbug.cs.rit.edu", 22),
-        ssh_username=username,
-        ssh_password=password,
-        remote_bind_address=("localhost", 5432),
-    ) as server:
-        server.start()
-        params = {
-            "database": db_name,
-            "user": username,
-            "password": password,
-            "host": "localhost",
-            "port": server.local_bind_port,
-        }
-        conn = await asyncpg.connect(**params)
-        pkmn_res = await conn.fetch(
-            f"SELECT name, pokemon_info_id FROM {db_name}.pokemon_info"
-        )
-        move_res = await conn.fetch(f"SELECT name, move_id FROM {db_name}.move_info")
-        pokemon = np.array(pkmn_res)
-        moves = np.array(move_res)
+    conn = await db_connect()
+    pkmn_res = await conn.fetch(f"SELECT name, pokemon_info_id FROM pokemon_info")
+    move_res = await conn.fetch(f"SELECT name, move_id FROM move_info")
+    pokemon = np.array(pkmn_res)
+    moves = np.array(move_res)
 
     async def get_movepool(url: str, df: DataFrame):
         async with aiohttp.ClientSession() as session:
@@ -166,29 +128,15 @@ async def get_egg_groups(url, df: DataFrame):
 
 
 async def preprocess_egg_groups():
-    with SSHTunnelForwarder(
-        ("starbug.cs.rit.edu", 22),
-        ssh_username=username,
-        ssh_password=password,
-        remote_bind_address=("localhost", 5432),
-    ) as server:
-        server.start()
-        params = {
-            "database": db_name,
-            "user": username,
-            "password": password,
-            "host": "localhost",
-            "port": server.local_bind_port,
-        }
-        conn = await asyncpg.connect(**params)
-        pkmn_res = await conn.fetch(
-            f"SELECT name, pokemon_info_id FROM {db_name}.pokemon_info"
-        )
-        egg_res = await conn.fetch(
-            f"SELECT name, egg_group_id FROM {db_name}.egg_group"
-        )
-        pokemon = np.array(pkmn_res)
-        egg_groups = np.array(egg_res)
+    conn = await db_connect()
+    pkmn_res = await conn.fetch(
+        f"SELECT name, pokemon_info_id FROM pokemon_info"
+    )
+    egg_res = await conn.fetch(
+        f"SELECT name, egg_group_id FROM egg_group"
+    )
+    pokemon = np.array(pkmn_res)
+    egg_groups = np.array(egg_res)
 
     async def get_egg_rel(url, df: DataFrame):
         async with aiohttp.ClientSession() as session:

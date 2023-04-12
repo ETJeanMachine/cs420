@@ -1,50 +1,28 @@
-import aiohttp, asyncio, asyncpg
-import pandas as pd
+import aiohttp, asyncio
 from pandas import DataFrame
 from asyncpg.connection import Connection
-from asyncpg import Record
-from sshtunnel import SSHTunnelForwarder
-
-db_conn_file = open("./db_conn.key")
-db_name = db_conn_file.readline().strip()
-username = db_conn_file.readline().strip()
-password = db_conn_file.readline().strip()
+from db_connect import db_connect
 
 
 async def get_pokemon_info():
-    with SSHTunnelForwarder(
-        ("starbug.cs.rit.edu", 22),
-        ssh_username=username,
-        ssh_password=password,
-        remote_bind_address=("localhost", 5432),
-    ) as server:
-        server.start()
-        params = {
-            "database": db_name,
-            "user": username,
-            "password": password,
-            "host": "localhost",
-            "port": server.local_bind_port,
-        }
-        conn: Connection = await asyncpg.connect(**params)
-        await conn.execute("""set search_path = "p42002_03";""")
-        records = await conn.fetch(
-            """select pokemon_info_id, name, dex_no, is_primary, is_mythical, is_legendary
+    conn = await db_connect()
+    records = await conn.fetch(
+        """select pokemon_info_id, name, dex_no, is_primary, is_mythical, is_legendary
                from pokemon_info
                order by dex_no;"""
-        )
-        df = DataFrame.from_records(
-            records,
-            columns=[
-                "pokemon_info_id",
-                "name",
-                "dex_no",
-                "is_primary",
-                "is_mythical",
-                "is_legendary",
-            ],
-        )
-        conn.close()
+    )
+    df = DataFrame.from_records(
+        records,
+        columns=[
+            "pokemon_info_id",
+            "name",
+            "dex_no",
+            "is_primary",
+            "is_mythical",
+            "is_legendary",
+        ],
+    )
+    conn.close()
     return df
 
 
@@ -116,33 +94,19 @@ async def main():
     total_pkmn = len(pkmn_info.index)
     cnt = 0
     # Storing our updates to the database.
-    with SSHTunnelForwarder(
-        ("starbug.cs.rit.edu", 22),
-        ssh_username=username,
-        ssh_password=password,
-        remote_bind_address=("localhost", 5432),
-    ) as server:
-        server.start()
-        params = {
-            "database": db_name,
-            "user": username,
-            "password": password,
-            "host": "localhost",
-            "port": server.local_bind_port,
-        }
-        conn: Connection = await asyncpg.connect(**params)
-        await conn.execute("""set search_path = "p42002_03";""")
-        stmt = await conn.prepare(
+    conn: Connection = await db_connect()
+    await conn.execute("""set search_path = "p42002_03";""")
+    stmt = await conn.prepare(
+        """
+            update pokemon_info
+            set dex_no=$2, is_primary=$3, is_mythical=$4, is_legendary=$5
+            where pokemon_info_id=$1;
             """
-                update pokemon_info
-                set dex_no=$2, is_primary=$3, is_mythical=$4, is_legendary=$5
-                where pokemon_info_id=$1;
-                """
-        )
-        pkmn_info.drop(["old_dex_no", "name"], axis=1, inplace=True)
-        records = pkmn_info.itertuples(index=False)
-        await stmt.executemany(records)
-        conn.close()
+    )
+    pkmn_info.drop(["old_dex_no", "name"], axis=1, inplace=True)
+    records = pkmn_info.itertuples(index=False)
+    await stmt.executemany(records)
+    conn.close()
     print(pkmn_info)
     print(cnt)
 

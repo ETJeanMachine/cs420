@@ -1,19 +1,12 @@
 import re
 from typing import Dict, List
-import aiohttp, asyncio, asyncpg
+import aiohttp, asyncio
 import time, datetime
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
 from pandas import DataFrame
-from sshtunnel import SSHTunnelForwarder
-
-
-# Getting valid information from the connection file.
-db_conn_file = open("./db_conn.key")
-db_name = db_conn_file.readline().strip()
-username = db_conn_file.readline().strip()
-password = db_conn_file.readline().strip()
+from db_connect import db_connect
 
 # for debugging.
 pkmn_outliers = set()
@@ -30,30 +23,15 @@ async def append_df(table: str, df: DataFrame):
         in the database.
         index (bool, optional): Whether or not to use the index of the dataframe when appending. Defaults to False.
     """
-    with SSHTunnelForwarder(
-        ("starbug.cs.rit.edu", 22),
-        ssh_username=username,
-        ssh_password=password,
-        remote_bind_address=("localhost", 5432),
-    ) as server:
-        server.start()
-        params = {
-            "database": db_name,
-            "user": username,
-            "password": password,
-            "host": "localhost",
-            "port": server.local_bind_port,
-        }
-        conn = await asyncpg.connect(**params)
-        records = df.itertuples(index=False, name=None)
-        # appending the table.
-        await conn.copy_records_to_table(
-            table,
-            records=records,
-            columns=list(df),
-            schema_name=db_name,
-        )
-        conn.close()
+    conn = await db_connect()
+    records = df.itertuples(index=False, name=None)
+    # appending the table.
+    await conn.copy_records_to_table(
+        table,
+        records=records,
+        columns=list(df),
+    )
+    conn.close()
 
 
 async def get_links(url: str, reg: str = None) -> List[str]:
@@ -274,32 +252,18 @@ async def main():
 
     # everything within the "with" here is just to gather the `move_info` and `pokemon_info`
     # tables into dataframes that we use later in the program.
-    with SSHTunnelForwarder(
-        ("starbug.cs.rit.edu", 22),
-        ssh_username=username,
-        ssh_password=password,
-        remote_bind_address=("localhost", 5432),
-    ) as server:
-        server.start()
-        params = {
-            "database": db_name,
-            "user": username,
-            "password": password,
-            "host": "localhost",
-            "port": server.local_bind_port,
-        }
-        conn = await asyncpg.connect(**params)
-        pkmn_res = await conn.fetch(
-            f"SELECT name, pokemon_info_id FROM {db_name}.pokemon_info"
-        )
-        move_res = await conn.fetch(f"SELECT name, move_id FROM {db_name}.move_info")
-        # defining the moves and pokemon dataframes correctly; after we get their info from the db.
-        pokemon, moves = DataFrame(pkmn_res), DataFrame(move_res)
-        pokemon.index, moves.index = pokemon[0], moves[0]
-        pokemon, moves = pokemon.drop(columns=[0]), moves.drop(columns=[0])
-        # for move processing we have to remove the `-`.
-        moves.index = moves.index.str.replace("-", "")
-        conn.close()
+    conn = await db_connect()
+    pkmn_res = await conn.fetch(
+        f"SELECT name, pokemon_info_id FROM pokemon_info"
+    )
+    move_res = await conn.fetch(f"SELECT name, move_id FROM move_info")
+    # defining the moves and pokemon dataframes correctly; after we get their info from the db.
+    pokemon, moves = DataFrame(pkmn_res), DataFrame(move_res)
+    pokemon.index, moves.index = pokemon[0], moves[0]
+    pokemon, moves = pokemon.drop(columns=[0]), moves.drop(columns=[0])
+    # for move processing we have to remove the `-`.
+    moves.index = moves.index.str.replace("-", "")
+    conn.close()
 
     # an async taskgroup that gathers all of the json files that we need. `data_files`
     # is populated after this is run (in the form [[url, month], ...]).
