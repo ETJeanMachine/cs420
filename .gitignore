@@ -4,4 +4,5 @@
 *.key
 *.png
 .DS_Store
+src/utils/__pycache__
 
