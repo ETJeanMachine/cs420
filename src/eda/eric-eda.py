@@ -4,32 +4,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from pandas import DataFrame
-from sshtunnel import SSHTunnelForwarder
-
-db_conn_file = open("./db_conn.key")
-db_name = db_conn_file.readline().strip()
-username = db_conn_file.readline().strip()
-password = db_conn_file.readline().strip()
-
+from db_connect import db_connect
 
 async def main():
-    with SSHTunnelForwarder(
-        ("starbug.cs.rit.edu", 22),
-        ssh_username=username,
-        ssh_password=password,
-        remote_bind_address=("localhost", 5432),
-    ) as server:
-        server.start()
-        params = {
-            "database": db_name,
-            "user": username,
-            "password": password,
-            "host": "localhost",
-            "port": server.local_bind_port,
-        }
-        conn = await asyncpg.connect(**params)
-        await conn.execute("""set search_path = "p42002_03";""")
-        query_all = """
+    conn = await db_connect()
+    await conn.execute("""set search_path = "p42002_03";""")
+    query_all = """
 select p.name, m.month, sum(ps.raw_count) / t.count percentage
 from pokemon_info p,
 	 pokemon_stats ps,
@@ -42,7 +22,7 @@ where p.pokemon_info_id = ps.pokemon_info_id
   and m.metagame_id = ps.metagame_id
   and m.cutoff = 0
 group by m.month, p.name, t.count;"""
-        query_top_5 = """
+    query_top_5 = """
         select p.name
 from pokemon_stats ps,
 	 pokemon_info p,
@@ -53,9 +33,9 @@ where ps.pokemon_info_id = p.pokemon_info_id
 group by p.name
 order by sum(ps.raw_count) desc
 limit 5;"""
-        all_pokemon = await conn.fetch(query_all)
-        top_5 = await conn.fetch(query_top_5)
-        conn.close()
+    all_pokemon = await conn.fetch(query_all)
+    top_5 = await conn.fetch(query_top_5)
+    conn.close()
     df = DataFrame.from_records(all_pokemon)
     pokemon = df[0].unique()
     top_5_pokemon = DataFrame.from_records(top_5)[0].unique()
