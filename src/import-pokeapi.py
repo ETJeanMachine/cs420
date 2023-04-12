@@ -1,7 +1,7 @@
 import aiohttp, asyncio
 import numpy as np
 from pandas import DataFrame
-from db_connect import db_connect
+from utils.db_connect import db_connect
 
 """
 ORDER OF IMPORTS:

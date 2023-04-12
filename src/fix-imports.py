@@ -1,7 +1,7 @@
 import aiohttp, asyncio
 from pandas import DataFrame
 from asyncpg.connection import Connection
-from db_connect import db_connect
+from utils.db_connect import db_connect
 
 
 async def get_pokemon_info():

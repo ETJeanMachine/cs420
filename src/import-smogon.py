@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
 from pandas import DataFrame
-from db_connect import db_connect
+from utils.db_connect import db_connect
 
 # for debugging.
 pkmn_outliers = set()

@@ -2,14 +2,14 @@ import asyncpg
 from asyncpg.connection import Connection
 from sshtunnel import SSHTunnelForwarder
 
-db_conn_file = open("./db_conn.key")
-db_name = db_conn_file.readline().strip()
-schema = db_conn_file.readline().strip()
-username = db_conn_file.readline().strip()
-password = db_conn_file.readline().strip()
-
 
 async def db_connect() -> Connection:
+    db_conn_file = open("./db_conn.key")
+    db_name = db_conn_file.readline().strip()
+    schema = db_conn_file.readline().strip()
+    username = db_conn_file.readline().strip()
+    password = db_conn_file.readline().strip()
+
     with SSHTunnelForwarder(
         ("starbug.cs.rit.edu", 22),
         ssh_username=username,
