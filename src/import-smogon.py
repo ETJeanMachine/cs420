@@ -190,54 +190,6 @@ async def get_smogon_data(
         dataframes["move_stats"] = pd.concat(
             [dataframes["move_stats"], moves_df], ignore_index=True
         )
-        # lmaooooooo
-        if True == False:
-            # acquiring (relevant) nature data.
-            nature_data = DataFrame(merged["Spreads"])
-            nature_data.index += stats_idx_shift
-            nature_data.reset_index(names="stats_id", inplace=True)
-            # testing chat-gpt bs
-            # holy crap lois it worked
-            explode_nature = pd.json_normalize(nature_data["Spreads"])
-            explode_nature["stats_id"] = nature_data["stats_id"]
-            grouped_nature = explode_nature.groupby(lambda x: x.split(":")[0], axis=1)
-            nature_df = grouped_nature.agg("sum")
-            # okay but not exactly gotta do some extra stuff
-            nature_df.columns = nature_df.columns.str.lower()
-            # ahHHHHHHHHHHHHH (long set)
-            natures = {
-                "hardy",
-                "lonely",
-                "brave",
-                "adamant",
-                "naughty",
-                "bold",
-                "docile",
-                "relaxed",
-                "impish",
-                "lax",
-                "timid",
-                "hasty",
-                "serious",
-                "jolly",
-                "naive",
-                "modest",
-                "mild",
-                "quiet",
-                "bashful",
-                "rash",
-                "calm",
-                "gentle",
-                "sassy",
-                "careful",
-                "quirky",
-            }
-            missing = natures.difference(set(nature_df.columns.to_list()))
-            nature_df[list(missing)] = 0
-            dataframes["nature_stats"] = pd.concat(
-                [dataframes["nature_stats"], nature_df], ignore_index=True
-            )
-        pass
 
 
 async def main():
