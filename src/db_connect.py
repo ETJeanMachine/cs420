@@ -1,5 +1,6 @@
 import asyncpg
 from asyncpg.connection import Connection
+from sshtunnel import SSHTunnelForwarder
 
 db_conn_file = open("./db_conn.key")
 db_name = db_conn_file.readline().strip()
