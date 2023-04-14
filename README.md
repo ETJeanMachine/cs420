@@ -34,17 +34,23 @@
 To connect within the program, put:
 
 ```py
+import asyncio
 import utils.db_connect as db
 ```
 
-At the top of the file you wish to connect to the
-database from. This function returns a connection object you can perform operations on. For example:
+At the top of the file you wish to connect to the database from. The `utils.db_connect` file contains helper functions to make connecting to the database easier. `asyncio` is necessary for running asynchronous calls to the database.
 
 ```py
-with db.tunnel() as server: 
-    conn = await db.connect(server)
-    query = await conn.fetch("""SELECT * FROM table;""")
-    conn.close()
+async main():
+    with db.tunnel() as server: 
+        conn = await db.connect(server)
+        query = await conn.fetch("""SELECT * FROM table;""")
+        # How to convert to a pandas dataframe:
+        # df = pd.Dataframe.from_records(query)
+        conn.close()
+
+asyncio.run(main())
 ```
+
 
 Is a valid way of accessing the database. **CLOSE THE CONNECTION AFTER OPENING IT, ALWAYS**.
