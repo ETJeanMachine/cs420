@@ -133,7 +133,14 @@ async def add_ability_chunk(abilities):
             chunk[ability["name"]] = p_dict
     with db.tunnel() as server:
         conn = await db.connect(server)
+        ability_1 = []
+        ability_2 = []
+        hidden_ability = []
         for ability in chunk.keys():
+            ability_record = await conn.fetch(
+                f"""SELECT ability_info_id FROM ability_info WHERE name = '{ability}';"""
+            )
+            ability_id = ability_record[0]["ability_info_id"]
             for pokemon in chunk[ability]:
                 if "walking-wake" not in pokemon or "iron-leaves" not in pokemon:
                     records, iter = "", 0
@@ -141,7 +148,29 @@ async def add_ability_chunk(abilities):
                         query = query_helper(pokemon, iter)
                         records = await conn.fetch(query)
                         iter += 1
-        conn.close()
+                    if len(records) != 1:
+                        print(pokemon)
+                    else:
+                        id = records[0]["pokemon_info_id"]
+                        match chunk[ability][pokemon]:
+                            case 1:
+                                ability_1.append((ability_id, id))
+                            case 2:
+                                ability_2.append((ability_id, id))
+                            case 3:
+                                hidden_ability.append((ability_id, id))
+
+        stmt_1 = (
+            """UPDATE pokemon_info SET ability_1 = $1 WHERE pokemon_info_id = $2;"""
+        )
+        stmt_2 = (
+            """UPDATE pokemon_info SET ability_2 = $1 WHERE pokemon_info_id = $2;"""
+        )
+        stmt_h = """UPDATE pokemon_info SET hidden_ability = $1 WHERE pokemon_info_id = $2;"""
+        await conn.executemany(stmt_1, ability_1)
+        await conn.executemany(stmt_2, ability_2)
+        await conn.executemany(stmt_h, hidden_ability)
+        await conn.close()
 
 
 async def add_abilities():
@@ -149,6 +178,12 @@ async def add_abilities():
         response = await session.get("https://pokeapi.co/api/v2/ability?limit=500")
         json = await response.json()
     results = json["results"]
+    with db.tunnel() as server:
+        conn = await db.connect(server)
+        stmt = """INSERT INTO ability_info(name) VALUES ($1);"""
+        vals = list(map(lambda x: (x["name"],), results))
+        await conn.executemany(stmt, vals)
+        await conn.close()
     chunk_size = round(len(results) / TASK_COUNT)
     start = time.perf_counter()
     async with asyncio.TaskGroup() as tg:
@@ -194,4 +229,4 @@ def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(add_abilities())
+    asyncio.run(main())
