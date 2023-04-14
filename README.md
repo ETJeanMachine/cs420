@@ -34,7 +34,7 @@
 To connect within the program, put:
 
 ```py
-import db_connect as db
+import utils.db_connect as db
 ```
 
 At the top of the file you wish to connect to the
