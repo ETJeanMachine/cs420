@@ -82,6 +82,44 @@ def get_links(url: str, reg: str = None) -> List[str]:
     return urls
 
 
+def query_helper(pokemon: str, iter):
+    if iter == 1:
+        return f"""SELECT pokemon_info_id FROM pokemon_info WHERE name LIKE'%{pokemon}%';"""
+    elif iter > 2:
+        # finding gendered pokemon.
+        if re.match(r".*-(male|female|m|f)$", pokemon):
+            gender = pokemon.split("-")[-1]
+            # nidoran is special :3
+            if "nidoran" in pokemon:
+                if gender == "male":
+                    pokemon = "nidoranm"
+                else:
+                    pokemon = "nidoranf"
+            else:
+                split = pokemon.split("-")
+                pokemon = split[0]
+                for i in range(len(split) - 2):
+                    pokemon += f"-{split[i + 1]}"
+                if gender == "female":
+                    pokemon += "-f"
+        else:
+            # for all EXCEPT these, we just remove everything after the final -
+            if "raticate" in pokemon or "marowak" in pokemon:
+                split = pokemon.split("-")
+                pokemon = split[0] + "-alola-totem"
+            elif "zygarde" in pokemon:
+                pokemon += "%"
+            elif "basculin" in pokemon or "morpeko" in pokemon:
+                split = pokemon.split("-")
+                pokemon = split[0]
+            else:
+                split = pokemon.split("-")
+                pokemon = split[0]
+                for i in range(len(split) - 2):
+                    pokemon += f"-{split[i + 1]}"
+    return f"""SELECT pokemon_info_id FROM pokemon_info WHERE name = '{pokemon}';"""
+
+
 async def add_ability_chunk(abilities):
     chunk = {}
     async with aiohttp.ClientSession() as session:
@@ -97,9 +135,12 @@ async def add_ability_chunk(abilities):
         conn = await db.connect(server)
         for ability in chunk.keys():
             for pokemon in chunk[ability]:
-                query = f"""SELECT pokemon_info_id FROM pokemon_info WHERE name = '{pokemon}';"""
-                out = await conn.execute(query)
-                print(len(out))
+                if pokemon != "walking-wake" or pokemon != "iron-leaves":
+                    records, iter = "", 0
+                    while len(records) != 1 and iter < 4:
+                        query = query_helper(pokemon, iter)
+                        records = await conn.fetch(query)
+                        iter += 1
         conn.close()
 
 
@@ -117,6 +158,8 @@ async def add_abilities():
             tg.create_task(add_ability_chunk(results[begin:end]))
     stop = time.perf_counter()
     runtime = time.strftime("%M:%S", time.gmtime(stop - start))
+    for s in fucked_up:
+        print(s)
     print(f"Added all abilities in {runtime} minutes.")
 
 
