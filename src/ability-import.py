@@ -1,23 +1,58 @@
 import os
 import re
+import time
 import aiohttp, asyncio
-import time, datetime
+import datetime
+from asyncpg import Connection
+import asyncpg
 import pandas as pd
 import numpy as np
-from multiprocessing import Process
 from typing import Dict, List
 from bs4 import BeautifulSoup
 from pandas import DataFrame
 import requests
 import concurrent.futures
-from utils.db_connect import db_connect
-from concurrent.futures import ProcessPoolExecutor
+import utils.db_connect as db
 
 NUM_CORES = os.cpu_count()
+TASK_COUNT = 5
+FILTER = r"^(gen[5-9])?(doubles)?(ou|ubers|anythinggoes|vgc\d{4}(series\d)?)-\d+\.json$"
 
 
-def process_folders(folders: List[str]):
-    print(f"{len(folders)}")
+async def import_file(url: str):
+    # one session per file.
+    async with aiohttp.ClientSession() as session:
+        response = await session.get(url)
+        json = await response.json()
+    info = json["info"]
+    df = DataFrame.from_dict(json["data"], orient="index")
+    abilities = df["Abilities"].copy()
+    # Preserving memory.
+    del df, json
+
+
+async def chunk_worker(chunk: List[str]):
+    for file in chunk:
+        await import_file(file)
+
+
+async def file_worker(files: List[str]):
+    chunk_size = round(len(files) / TASK_COUNT)
+    async with asyncio.TaskGroup() as tg:
+        for i in range(TASK_COUNT):
+            begin = i * chunk_size
+            end = (i + 1) * chunk_size if i < TASK_COUNT - 1 else len(files)
+            tg.create_task(chunk_worker(files[begin:end]))
+
+
+def process_files(files: List[str], id: int):
+    start = time.perf_counter()
+    print(f"Process #{id + 1} started.")
+    asyncio.run(file_worker(files))
+    stop = time.perf_counter()
+    print(
+        f"Process #{id + 1} ended in {stop - start:0.3f}s. ({len(files)} files processed)"
+    )
 
 
 def get_links(url: str, reg: str = None) -> List[str]:
@@ -36,34 +71,86 @@ def get_links(url: str, reg: str = None) -> List[str]:
     res = requests.get(url)
     soup = BeautifulSoup(res.text, "html.parser")
     urls = []
-    for l in soup.find_all("a"):
+    if reg == None:
+        links = soup.find_all("a")
+    else:
+        links = soup.find_all("a", {"href": re.compile(reg)})
+    for l in links:
         href = l.get("href")
         if href != "../":
-            if reg == None:
-                urls.append(f"{url}{href}")
-            elif re.match(reg, href):
-                urls.append(f"{url}{href}")
+            urls.append(f"{url}{href}")
     return urls
 
 
+async def add_ability_chunk(abilities):
+    chunk = {}
+    async with aiohttp.ClientSession() as session:
+        for ability in abilities:
+            response = await session.get(ability["url"])
+            json = await response.json()
+            pokemon = json["pokemon"]
+            p_dict = {}
+            for p in pokemon:
+                p_dict[p["pokemon"]["name"]] = p["slot"]
+            chunk[ability["name"]] = p_dict
+    with db.tunnel() as server:
+        conn = await db.connect(server)
+        for ability in chunk.keys():
+            for pokemon in chunk[ability]:
+                query = f"""SELECT pokemon_info_id FROM pokemon_info WHERE name = '{pokemon}';"""
+                out = await conn.execute(query)
+                print(len(out))
+        conn.close()
+
+
+async def add_abilities():
+    async with aiohttp.ClientSession() as session:
+        response = await session.get("https://pokeapi.co/api/v2/ability?limit=500")
+        json = await response.json()
+    results = json["results"]
+    chunk_size = round(len(results) / TASK_COUNT)
+    start = time.perf_counter()
+    async with asyncio.TaskGroup() as tg:
+        for i in range(TASK_COUNT):
+            begin = i * chunk_size
+            end = (i + 1) * chunk_size if i < TASK_COUNT - 1 else len(results)
+            tg.create_task(add_ability_chunk(results[begin:end]))
+    stop = time.perf_counter()
+    runtime = time.strftime("%M:%S", time.gmtime(stop - start))
+    print(f"Added all abilities in {runtime} minutes.")
+
+
 def main():
+    print("Getting smogon links...")
+    start = time.perf_counter()
     smogon_url = "https://www.smogon.com/stats/"
-    folders = get_links(smogon_url)
+    # we do have some regex here - this is for excluding data past January 2023.
+    folders = get_links(smogon_url, r"^20(?!2[3-9]-[01][2-9])\d{2}-[01]\d.*/$")
+    files = []
+    for folder in folders:
+        chaos = f"{folder}/chaos/"
+        files.extend(get_links(chaos, FILTER))
+    stop = time.perf_counter()
+    print(f"Got {len(files)} file links in {stop - start:0.3f}s")
     futures = []
-    chunks_size = round(len(folders) / NUM_CORES)
+    chunk_size = round(len(files) / NUM_CORES)
     # there's so much data being processed in abilities; that it's
     # best to use multiple CPU cores. since each process is working
     # independently and managing multiple downloads at once; it shouldn't
     # present any unique issues.
+    start = time.perf_counter()
     with concurrent.futures.ProcessPoolExecutor(NUM_CORES) as executor:
         for i in range(NUM_CORES):
             # splitting the folders roughly among our various processes.
-            start = i * chunks_size
-            end = (i + 1) * chunks_size if i < NUM_CORES - 1 else len(folders) - 1
-            new_future = executor.submit(process_folders, folders=folders[start:end])
+            begin = i * chunk_size
+            end = (i + 1) * chunk_size if i < NUM_CORES - 1 else len(files)
+            new_future = executor.submit(process_files, files=files[begin:end], id=i)
             futures.append(new_future)
     concurrent.futures.wait(futures)
+    stop = time.perf_counter()
+    runtime = time.strftime("%M:%S", time.gmtime(stop - start))
+    print(f"Processed all files in {runtime} minutes.")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(add_abilities())

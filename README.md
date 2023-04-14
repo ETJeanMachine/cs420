@@ -42,7 +42,7 @@ database from. This function returns a connection object you can perform operati
 
 ```py
 with db.tunnel() as server: 
-    conn = await db_connect(server)
+    conn = await db.connect(server)
     query = conn.fetch("""SELECT * FROM table;""")
     conn.close()
 ```
