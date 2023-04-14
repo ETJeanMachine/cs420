@@ -34,16 +34,17 @@
 To connect within the program, put:
 
 ```py
-from db_connect import db_connect
+import db_connect as db
 ```
 
 At the top of the file you wish to connect to the
 database from. This function returns a connection object you can perform operations on. For example:
 
 ```py
-conn = await db_connect()
-query = conn.fetch("""SELECT * FROM table;""")
-conn.close();
+with db.tunnel() as server: 
+    conn = await db_connect(server)
+    query = conn.fetch("""SELECT * FROM table;""")
+    conn.close()
 ```
 
 Is a valid way of accessing the database. **CLOSE THE CONNECTION AFTER OPENING IT, ALWAYS**.
