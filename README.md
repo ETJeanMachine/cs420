@@ -44,9 +44,9 @@ At the top of the file you wish to connect to the database from. The `utils.db_c
 async main():
     with db.tunnel() as server: 
         conn = await db.connect(server)
-        query = await conn.fetch("""SELECT * FROM table;""")
+        records = await conn.fetch("""SELECT * FROM table;""")
         # How to convert to a pandas dataframe:
-        # df = pd.Dataframe.from_records(query)
+        # df = pd.Dataframe.from_records(records)
         conn.close()
 
 asyncio.run(main())
