@@ -135,7 +135,7 @@ async def add_ability_chunk(abilities):
         conn = await db.connect(server)
         for ability in chunk.keys():
             for pokemon in chunk[ability]:
-                if pokemon != "walking-wake" or pokemon != "iron-leaves":
+                if "walking-wake" not in pokemon or "iron-leaves" not in pokemon:
                     records, iter = "", 0
                     while len(records) != 1 and iter < 4:
                         query = query_helper(pokemon, iter)
@@ -158,8 +158,6 @@ async def add_abilities():
             tg.create_task(add_ability_chunk(results[begin:end]))
     stop = time.perf_counter()
     runtime = time.strftime("%M:%S", time.gmtime(stop - start))
-    for s in fucked_up:
-        print(s)
     print(f"Added all abilities in {runtime} minutes.")
 
 
