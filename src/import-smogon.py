@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
 from pandas import DataFrame
-from utils.db_connect import db_connect
+from utils.db_connect import connect
 
 # for debugging.
 pkmn_outliers = set()
@@ -23,7 +23,7 @@ async def append_df(table: str, df: DataFrame):
         in the database.
         index (bool, optional): Whether or not to use the index of the dataframe when appending. Defaults to False.
     """
-    conn = await db_connect()
+    conn = await connect()
     records = df.itertuples(index=False, name=None)
     # appending the table.
     await conn.copy_records_to_table(
@@ -204,7 +204,7 @@ async def main():
 
     # everything within the "with" here is just to gather the `move_info` and `pokemon_info`
     # tables into dataframes that we use later in the program.
-    conn = await db_connect()
+    conn = await connect()
     pkmn_res = await conn.fetch(
         f"SELECT name, pokemon_info_id FROM pokemon_info"
     )

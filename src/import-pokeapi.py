@@ -1,7 +1,7 @@
 import aiohttp, asyncio
 import numpy as np
 from pandas import DataFrame
-from utils.db_connect import db_connect
+from utils.db_connect import connect
 
 """
 ORDER OF IMPORTS:
@@ -37,7 +37,7 @@ async def append_df(table: str, df: DataFrame, index=False):
 
         index (bool, optional): Whether or not to use the index of the dataframe when appending. Defaults to False.
     """
-    conn = await db_connect()
+    conn = await connect()
     records = df.itertuples(index=index, name=None)
     # appending the table.
     await conn.copy_records_to_table(
@@ -100,7 +100,7 @@ async def get_move_info(url: str, df: DataFrame):
 
 
 async def preprocess_move_pool():
-    conn = await db_connect()
+    conn = await connect()
     pkmn_res = await conn.fetch(f"SELECT name, pokemon_info_id FROM pokemon_info")
     move_res = await conn.fetch(f"SELECT name, move_id FROM move_info")
     pokemon = np.array(pkmn_res)
@@ -128,7 +128,7 @@ async def get_egg_groups(url, df: DataFrame):
 
 
 async def preprocess_egg_groups():
-    conn = await db_connect()
+    conn = await connect()
     pkmn_res = await conn.fetch(
         f"SELECT name, pokemon_info_id FROM pokemon_info"
     )

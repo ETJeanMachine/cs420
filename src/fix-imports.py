@@ -1,11 +1,11 @@
 import aiohttp, asyncio
 from pandas import DataFrame
 from asyncpg.connection import Connection
-from utils.db_connect import db_connect
+from utils.db_connect import connect
 
 
 async def get_pokemon_info():
-    conn = await db_connect()
+    conn = await connect()
     records = await conn.fetch(
         """select pokemon_info_id, name, dex_no, is_primary, is_mythical, is_legendary
                from pokemon_info
@@ -94,7 +94,7 @@ async def main():
     total_pkmn = len(pkmn_info.index)
     cnt = 0
     # Storing our updates to the database.
-    conn: Connection = await db_connect()
+    conn: Connection = await connect()
     await conn.execute("""set search_path = "p42002_03";""")
     stmt = await conn.prepare(
         """

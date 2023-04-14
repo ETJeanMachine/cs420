@@ -5,13 +5,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from pandas import DataFrame
-from utils.db_connect import db_connect
+from utils.db_connect import connect
 
 matplotlib.use("Agg")
 
 
 async def eric_eda():
-    conn = await db_connect()
+    conn = await connect()
     await conn.execute("""set search_path = "p42002_03";""")
     query_all = """
 select p.name, m.month, sum(ps.raw_count) / t.count percentage
@@ -103,7 +103,7 @@ limit 5;"""
 
 
 async def drake_eda():
-    conn = await db_connect
+    conn = await connect
     moves_vs_usage_query = "SELECT \
             move_query.pokemon_info_id, move_query.name, move_query.moves_available, usage_query.percent_used \
             FROM (SELECT ps.pokemon_info_id, p.name, SUM(ps.raw_count::float) / SUM(mg.total_battles) AS percent_used \
@@ -211,7 +211,7 @@ async def peter_eda():
     ROCK = "#A0522D"
     STEEL = "#808080"
     WATER = "#0000FF"
-    conn = await db_connect()
+    conn = await connect()
     # popularity_by_egg_group_query =  """
     # select pk.name, eg.name, pkie.pokemon_info_id, pkie.egg_group_id,
     # SUM(ps.raw_count::float) / SUM(mg.total_battles) as percent_used
