@@ -47,7 +47,7 @@ async main():
         records = await conn.fetch("""SELECT * FROM table;""")
         # How to convert to a pandas dataframe:
         # df = pd.Dataframe.from_records(records)
-        conn.close()
+        await conn.close()
 
 asyncio.run(main())
 ```
